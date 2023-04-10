@@ -4,6 +4,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 import time
 import heapq
+import rospy
+from geometry_msgs.msg import Twist
 
 class Node:
 
@@ -190,6 +192,59 @@ def plot(start_node, goal_node, x_path, y_path, N_list, S_list):
     plt.plot(x_path, y_path, ':r')
     plt.show()
     plt.close('all')
+    
+def calculate_velocities(Xi, Yi, Thetai, UL, UR):
+    r = 0.033
+    L = 0.16
+    dt = 0.1
+
+    UL = UL * 2 * math.pi / 60
+    UR = UR * 2 * math.pi / 60
+
+    thetan = 3.14 * Thetai / 180
+
+    theta_dot = (r / L) * (UR - UL)
+    change_theta = theta_dot + thetan
+
+    x_dot = (r / 2) * (UL + UR) * math.cos(change_theta)
+    y_dot = (r / 2) * (UL + UR) * math.sin(change_theta)
+
+    velocity = math.sqrt(x_dot * 2 + y_dot * 2)
+
+    return velocity, theta_dot
+
+def ros_pub(xpath, ypath, Lrpm, Rrpm, theta_path):
+    rospy.init_node('velocity_publisher', anonymous=True)
+    cmd_vel = rospy.Publisher('cmd_vel', Twist, queue_size=100)
+    twist = Twist()
+
+    twist.linear.x = 0.0
+    twist.linear.y = 0.0
+    twist.linear.z = 0.0
+    twist.angular.x = 0.0
+    twist.angular.y = 0.0
+    twist.angular.z = 0.0
+    cmd_vel.publish(twist)
+
+    c = 0
+    rate = rospy.Rate(10)
+
+    for i in range(len(xpath)):
+        print(f"Lrpm:{Lrpm[i]}, Rrpm:{Rrpm[i]}")
+        while not rospy.is_shutdown():
+            if c == 111:
+                twist.linear.x = 0
+                twist.angular.z = 0
+                cmd_vel.publish(twist)
+                break
+            else:
+                velocity, angle = calculate_velocities(xpath[i], ypath[i], theta_path[i], Lrpm[i], Rrpm[i])
+                twist.linear.x = velocity
+                twist.angular.z = angle
+                cmd_vel.publish(twist)
+                c = c + 1
+                rate.sleep()
+        c = 0
 
 if __name__ == '__main__':
     width = 6
@@ -240,3 +295,4 @@ if __name__ == '__main__':
         exit(-1)
 
     plot(start_node, goal_node, xpath, ypath, N_list, S_list)
+    ros_pub(xpath, ypath, Lrpm, Rrpm, theta_path)
